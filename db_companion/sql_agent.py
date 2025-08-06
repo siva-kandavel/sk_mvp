@@ -5,14 +5,14 @@ import os
 from typing import Dict
 from dotenv import load_dotenv
 from pathlib import Path
-from openai import OpenAI
+from langchain_openai import AzureChatOpenAI
 
 app = FastAPI()
 
 # Load environment variables from .env file
 load_dotenv()
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+client = AzureChatOpenAI(deployment_name="analysis", temperature=0)
 
 # Load schema info from pg_dump file using robust path handling
 BASE_DIR = Path(__file__).resolve().parent  # NEW
@@ -58,14 +58,8 @@ Convert the following natural language question to a SQL query:
     """
 
     try:
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0
-        )
-        sql_query = response.choices[0].message.content.strip()
+        response = client.invoke([{"role": "user", "content": prompt}])
+        sql_query = response.content.strip()
     except Exception as e:
         return {"error": f"Failed to generate SQL: {str(e)}"}
 

@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from langchain.agents import Tool
-from langchain_openai import ChatOpenAI
+from langchain_openai import AzureChatOpenAI
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import OpenAIEmbeddings
@@ -51,7 +51,8 @@ def review_enterprise_rules(code: str) -> str:
             docs = loader.load()
             vectordb = Chroma.from_documents(docs, OpenAIEmbeddings(), persist_directory="./rules_index")
             retriever = vectordb.as_retriever()
-            _enterprise_qa_chain = RetrievalQA.from_chain_type(llm=ChatOpenAI(), retriever=retriever)
+            llm = AzureChatOpenAI(deployment_name="analysis", temperature=0)
+            _enterprise_qa_chain = RetrievalQA.from_chain_type(llm=llm, retriever=retriever)
         except Exception as e:
             return f"Rule check initialization failed: {str(e)}"
     
