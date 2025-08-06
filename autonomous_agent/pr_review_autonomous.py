@@ -17,36 +17,46 @@ import uvicorn
 
 # ---------- TOOL DEFINITIONS ----------
 
-PDF_RULE_PATH = "/Users/sivakeerthi/Desktop/UserStory.docx"
+PDF_RULE_PATH = os.getenv("PDF_RULE_PATH", "/Users/sivakeerthi/Desktop/UserStory.docx")
+
+def _run_tool_on_temp_file(tool_name: str, code: str, file_suffix: str = ".py") -> str:
+    """Helper function to run static analysis tools on temporary files."""
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=file_suffix, mode="w") as temp_file:
+            temp_file.write(code)
+            temp_path = temp_file.name
+        result = subprocess.run([tool_name, temp_path], capture_output=True, text=True, timeout=15)
+        return result.stdout.strip()
+    except Exception as e:
+        return f"{tool_name.capitalize()} failed: {str(e)}"
+    finally:
+        try:
+            os.unlink(temp_path)
+        except:
+            pass
 
 def run_pylint(code: str) -> str:
-    try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".py", mode="w") as temp_file:
-            temp_file.write(code)
-            temp_path = temp_file.name
-        result = subprocess.run(["pylint", temp_path], capture_output=True, text=True, timeout=15)
-        return result.stdout.strip()
-    except Exception as e:
-        return f"Pylint failed: {str(e)}"
+    return _run_tool_on_temp_file("pylint", code)
 
 def run_bandit(code: str) -> str:
-    try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".py", mode="w") as temp_file:
-            temp_file.write(code)
-            temp_path = temp_file.name
-        result = subprocess.run(["bandit", temp_path], capture_output=True, text=True, timeout=15)
-        return result.stdout.strip()
-    except Exception as e:
-        return f"Bandit failed: {str(e)}"
+    return _run_tool_on_temp_file("bandit", code)
+
+_enterprise_qa_chain = None
 
 def review_enterprise_rules(code: str) -> str:
+    global _enterprise_qa_chain
+    if _enterprise_qa_chain is None:
+        try:
+            loader = PyPDFLoader(PDF_RULE_PATH)
+            docs = loader.load()
+            vectordb = Chroma.from_documents(docs, OpenAIEmbeddings(), persist_directory="./rules_index")
+            retriever = vectordb.as_retriever()
+            _enterprise_qa_chain = RetrievalQA.from_chain_type(llm=ChatOpenAI(), retriever=retriever)
+        except Exception as e:
+            return f"Rule check initialization failed: {str(e)}"
+    
     try:
-        loader = PyPDFLoader(PDF_RULE_PATH)
-        docs = loader.load()
-        vectordb = Chroma.from_documents(docs, OpenAIEmbeddings(), persist_directory="./rules_index")
-        retriever = vectordb.as_retriever()
-        qa_chain = RetrievalQA.from_chain_type(llm=ChatOpenAI(), retriever=retriever)
-        return qa_chain.run(f"Does this PR diff violate any enterprise rules? {code}")
+        return _enterprise_qa_chain.run(f"Does this PR diff violate any enterprise rules? {code}")
     except Exception as e:
         return f"Rule check failed: {str(e)}"
 

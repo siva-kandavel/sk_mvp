@@ -1,19 +1,18 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 import psycopg2
-import openai
 import os
 from typing import Dict
-from dotenv import load_dotenv  # NEW
-from pathlib import Path  # NEW
+from dotenv import load_dotenv
+from pathlib import Path
+from openai import OpenAI
 
 app = FastAPI()
 
 # Load environment variables from .env file
-load_dotenv()  # NEW
+load_dotenv()
 
-# Load your OpenAI API key from environment
-openai.api_key = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # Load schema info from pg_dump file using robust path handling
 BASE_DIR = Path(__file__).resolve().parent  # NEW
@@ -38,7 +37,9 @@ DB_SETTINGS = {
 }
 
 def get_db_connection():
-    return psycopg2.connect(**DB_SETTINGS)
+    conn = psycopg2.connect(**DB_SETTINGS)
+    conn.autocommit = True
+    return conn
 
 class QueryRequest(BaseModel):
     natural_language_query: str
@@ -57,7 +58,7 @@ Convert the following natural language question to a SQL query:
     """
 
     try:
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-4",
             messages=[
                 {"role": "user", "content": prompt}
@@ -70,13 +71,11 @@ Convert the following natural language question to a SQL query:
 
     # Step 2: Run SQL against Aurora PostgreSQL
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(sql_query)
-        columns = [desc[0] for desc in cursor.description]
-        results = [dict(zip(columns, row)) for row in cursor.fetchall()]
-        cursor.close()
-        conn.close()
+        with get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(sql_query)
+                columns = [desc[0] for desc in cursor.description]
+                results = [dict(zip(columns, row)) for row in cursor.fetchall()]
     except Exception as e:
         return {"sql": sql_query, "error": f"DB execution error: {str(e)}"}
 
