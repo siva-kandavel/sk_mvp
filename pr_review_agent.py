@@ -26,13 +26,8 @@ PDF_RULE_PATH = os.getenv("PDF_RULE_PATH", "/Users/sivakeerthi/Desktop/sample.pd
 openai_key = os.getenv("OPENAI_API_KEY")
 print("[ENV] OpenAI key prefix:", openai_key[:8] if openai_key else "NOT FOUND")
 
-# Quick test of Azure OpenAI LLM
-try:
-    test_llm = AzureChatOpenAI(deployment_name="analysis", temperature=0)
-    test_response = test_llm.invoke("Say hello")
-    print("[Azure OpenAI Test] Response:", test_response)
-except Exception as e:
-    print("[Azure OpenAI Test] Failed:", str(e))
+# Quick test of Azure OpenAI LLM - DISABLED to prevent startup issues
+print("[Azure OpenAI Test] Skipping test to ensure server starts")
 
 # ------------------ STATE SCHEMA ------------------
 class AgentState(TypedDict):
@@ -52,7 +47,13 @@ def get_rule_qa_chain():
             docs = loader.load()
             vectordb = Chroma.from_documents(docs, OpenAIEmbeddings())
             retriever = vectordb.as_retriever()
-            llm = AzureChatOpenAI(deployment_name="analysis", temperature=0)
+            llm = AzureChatOpenAI(
+                deployment_name="analysis",
+                temperature=0,
+                azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+                api_key=os.getenv("OPENAI_API_KEY"),
+                api_version=os.getenv("OPENAI_API_VERSION")
+            )
             _qa_chain_cache = RetrievalQA.from_chain_type(llm=llm, retriever=retriever)
         except Exception as e:
             print(f"[ERROR] Failed to initialize QA chain: {str(e)}")
@@ -161,4 +162,13 @@ async def review_pr(request: Request):
         return {"error": str(e)}
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    print("[SERVER] Starting FastAPI server...")
+    print(f"[SERVER] Environment check - API Key: {'✓' if os.getenv('OPENAI_API_KEY') else '✗'}")
+    print(f"[SERVER] Environment check - Endpoint: {'✓' if os.getenv('AZURE_OPENAI_ENDPOINT') else '✗'}")
+    print(f"[SERVER] Environment check - Version: {'✓' if os.getenv('OPENAI_API_VERSION') else '✗'}")
+    try:
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+    except Exception as e:
+        print(f"[SERVER ERROR] Failed to start server: {str(e)}")
+        import traceback
+        traceback.print_exc()
