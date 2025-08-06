@@ -1,12 +1,12 @@
 import os
 from dotenv import load_dotenv
-from openai import OpenAI
+from langchain_openai import AzureChatOpenAI
 
 load_dotenv()
 
-client = OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY"),
-    organization=os.getenv("OPENAI_ORG_ID")
+client = AzureChatOpenAI(
+    deployment_name="analysis",
+    temperature=0
 )
 
 api_key = os.getenv("OPENAI_API_KEY")
@@ -24,15 +24,12 @@ def generate_test_case(requirement_prompt: str, style="gherkin"):
     user_prompt = f"Generate a {style} test case for the following requirement:\n\n\"\"\"\n{requirement_prompt}\n\"\"\""
 
     try:
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": "You are a software testing expert skilled in generating test cases."},
-                {"role": "user", "content": user_prompt}
-            ]
-        )
-        test_case = response.choices[0].message.content
-        return test_case
+        messages = [
+            {"role": "system", "content": "You are a software testing expert skilled in generating test cases."},
+            {"role": "user", "content": user_prompt}
+        ]
+        response = client.invoke(messages)
+        return response.content
 
     except Exception as e:
         return f"Error: {str(e)}"

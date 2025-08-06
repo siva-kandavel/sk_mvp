@@ -8,7 +8,7 @@ from langchain.chains import RetrievalQA
 from langchain_community.vectorstores import Chroma
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.embeddings import OpenAIEmbeddings
-from langchain_community.llms import OpenAI
+from langchain_openai import AzureChatOpenAI
 from fastapi import FastAPI, Request
 import uvicorn
 import os
@@ -26,12 +26,13 @@ PDF_RULE_PATH = os.getenv("PDF_RULE_PATH", "/Users/sivakeerthi/Desktop/sample.pd
 openai_key = os.getenv("OPENAI_API_KEY")
 print("[ENV] OpenAI key prefix:", openai_key[:8] if openai_key else "NOT FOUND")
 
-# Quick test of OpenAI LLM
+# Quick test of Azure OpenAI LLM
 try:
-    test_response = OpenAI()("Say hello")
-    print("[OpenAI Test] Response:", test_response)
+    test_llm = AzureChatOpenAI(deployment_name="analysis", temperature=0)
+    test_response = test_llm.invoke("Say hello")
+    print("[Azure OpenAI Test] Response:", test_response)
 except Exception as e:
-    print("[OpenAI Test] Failed:", str(e))
+    print("[Azure OpenAI Test] Failed:", str(e))
 
 # ------------------ STATE SCHEMA ------------------
 class AgentState(TypedDict):
@@ -51,7 +52,8 @@ def get_rule_qa_chain():
             docs = loader.load()
             vectordb = Chroma.from_documents(docs, OpenAIEmbeddings())
             retriever = vectordb.as_retriever()
-            _qa_chain_cache = RetrievalQA.from_chain_type(llm=OpenAI(), retriever=retriever)
+            llm = AzureChatOpenAI(deployment_name="analysis", temperature=0)
+            _qa_chain_cache = RetrievalQA.from_chain_type(llm=llm, retriever=retriever)
         except Exception as e:
             print(f"[ERROR] Failed to initialize QA chain: {str(e)}")
             return None
