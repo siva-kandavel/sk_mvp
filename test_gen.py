@@ -1,22 +1,16 @@
-import openai
 import os
 from dotenv import load_dotenv
-
-openai.api_key_path = "/Users/sivakeerthi/PyCharmMiscProject/.env"
-# Load API key from .env
-load_dotenv()
-openai.api_key = os.getenv("OPENAI_API_KEY")
-openai.organization = os.getenv("OPENAI_ORG_ID")
-
-
 from openai import OpenAI
+
+load_dotenv()
 
 client = OpenAI(
     api_key=os.getenv("OPENAI_API_KEY"),
-    project=os.getenv("OPENAI_ORG_ID"),  # your actual project ID
-     )
+    organization=os.getenv("OPENAI_ORG_ID")
+)
 
-print("API Key Loaded:", openai.api_key[:5] + "..." if openai.api_key else "Not Found")
+api_key = os.getenv("OPENAI_API_KEY")
+print("API Key Loaded:", api_key[:5] + "..." if api_key else "Not Found")
 
 def generate_test_case(requirement_prompt: str, style="gherkin"):
     """
@@ -27,22 +21,17 @@ def generate_test_case(requirement_prompt: str, style="gherkin"):
     :return: Generated test case as a string.
     """
 
-    system_prompt = "You are a software testing expert skilled in generating test cases."
     user_prompt = f"Generate a {style} test case for the following requirement:\n\n\"\"\"\n{requirement_prompt}\n\"\"\""
 
     try:
-        models = client.models.list()
-
-        for model in models.data:
-            print(model.id)
-
         response = client.chat.completions.create(
-            model="gpt-4.1-nano",
+            model="gpt-4",
             messages=[
-                {"role": "user", "content": "Give me a Gherkin test for user login failure"}
+                {"role": "system", "content": "You are a software testing expert skilled in generating test cases."},
+                {"role": "user", "content": user_prompt}
             ]
         )
-        test_case = response['choices'][0]['message']['content']
+        test_case = response.choices[0].message.content
         return test_case
 
     except Exception as e:

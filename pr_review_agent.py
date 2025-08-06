@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 
 # ------------------ SETUP ------------------
 load_dotenv()
-PDF_RULE_PATH = "/Users/sivakeerthi/Desktop/sample.pdf"
+PDF_RULE_PATH = os.getenv("PDF_RULE_PATH", "/Users/sivakeerthi/Desktop/sample.pdf")
 
 # Validate OpenAI API Key
 openai_key = os.getenv("OPENAI_API_KEY")
@@ -41,20 +41,33 @@ class AgentState(TypedDict):
     final_summary: str
 
 # ------------------ LANGCHAIN UTILS ------------------
+_qa_chain_cache = None
+
 def get_rule_qa_chain():
-    loader = PyPDFLoader(PDF_RULE_PATH)
-    docs = loader.load()
-    vectordb = Chroma.from_documents(docs, OpenAIEmbeddings())
-    retriever = vectordb.as_retriever()
-    return RetrievalQA.from_chain_type(llm=OpenAI(), retriever=retriever)
+    global _qa_chain_cache
+    if _qa_chain_cache is None:
+        try:
+            loader = PyPDFLoader(PDF_RULE_PATH)
+            docs = loader.load()
+            vectordb = Chroma.from_documents(docs, OpenAIEmbeddings())
+            retriever = vectordb.as_retriever()
+            _qa_chain_cache = RetrievalQA.from_chain_type(llm=OpenAI(), retriever=retriever)
+        except Exception as e:
+            print(f"[ERROR] Failed to initialize QA chain: {str(e)}")
+            return None
+    return _qa_chain_cache
 
 # ------------------ LANGUAGE DETECTION ------------------
+_python_pattern = re.compile(r"\b(def|import|print|self|lambda)\b")
+_java_pattern = re.compile(r"\b(public|static|void|System\.out|class)\b")
+_react_pattern = re.compile(r"\b(function|const|let|useState|useEffect|return\s*\(<)\b")
+
 def detect_language(code: str) -> str:
-    if re.search(r"\b(def|import|print|self|lambda)\b", code):
+    if _python_pattern.search(code):
         return "python"
-    elif re.search(r"\b(public|static|void|System\.out|class)\b", code):
+    elif _java_pattern.search(code):
         return "java"
-    elif re.search(r"\b(function|const|let|useState|useEffect|return\s*\(<)\b", code) or ".jsx" in code or ".tsx" in code:
+    elif _react_pattern.search(code) or ".jsx" in code or ".tsx" in code:
         return "react"
     else:
         return "unknown"
@@ -78,6 +91,11 @@ def static_analyzer_node(state: AgentState) -> AgentState:
             pylint_result = process.stdout.strip()
         except Exception as e:
             pylint_result = f"Pylint failed: {str(e)}"
+        finally:
+            try:
+                os.unlink(temp_path)
+            except:
+                pass
 
     analysis = f"Detected language: {lang}.\n{pylint_result or 'No critical issues found in diff.'}"
     state["static_analysis"] = analysis
@@ -88,7 +106,12 @@ def rule_checker_node(state: AgentState) -> AgentState:
     qa_chain = get_rule_qa_chain()
     pr_diff = state.get("pr_diff", "")
     query = f"Does the following PR diff violate any enterprise logic? {pr_diff}"
-    answer = qa_chain.run(query)
+    
+    if qa_chain is not None:
+        answer = qa_chain.run(query)
+    else:
+        answer = "Rule check unavailable - QA chain initialization failed"
+    
     state["rule_check_result"] = answer
     print("[Node] Rule Checker", state)
     return state
